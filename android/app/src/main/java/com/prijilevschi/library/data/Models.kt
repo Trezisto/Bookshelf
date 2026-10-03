@@ -26,17 +26,28 @@ data class Book(
     val description: String? = null,
     val genre: String? = null,
     val language: String? = null,
-    val year: Int? = null,
+    val publisher: String? = null,
+    val url: String? = null,
+    /** Own rating, 0-5. */
+    val rating: Double? = null,
+    /** ISO date, e.g. 2005-08-01; the app only shows the year. */
+    val publicationDate: String? = null,
     val pages: Int? = null,
     val read: Boolean = false,
     /** ISO date, e.g. 2026-10-03 */
     val dateRead: String? = null,
     val author: Author,
+    val coAuthors: List<String> = emptyList(),
     val shelf: Shelf? = null,
     val positionNumber: Int? = null,
     val depthRow: Int = 1,
     val hasCover: Boolean = false,
+    /** ISO instants, e.g. 2026-10-03T12:00:00Z */
+    val createdAt: String? = null,
+    val modifiedAt: String? = null,
 ) {
+    val year: Int? get() = publicationDate?.take(4)?.toIntOrNull()
+
     /** "Living room · Row 3 · Position 7 · Back row (2)" */
     val locationLabel: String
         get() = if (shelf == null) "Not on a shelf" else buildString {
@@ -50,17 +61,38 @@ data class Book(
 data class BookRequest(
     val name: String,
     val authorName: String,
+    val coAuthors: List<String> = emptyList(),
     val isbn: String? = null,
     val description: String? = null,
     val genre: String? = null,
     val language: String? = null,
-    val year: Int? = null,
+    val publisher: String? = null,
+    val url: String? = null,
+    val rating: Double? = null,
+    val publicationDate: String? = null,
     val pages: Int? = null,
     val read: Boolean = false,
     val dateRead: String? = null,
     val shelfId: Long? = null,
     val positionNumber: Int? = null,
     val depthRow: Int? = null,
+)
+
+/** What the web knows about a book; every field may be missing. */
+@Serializable
+data class BookLookup(
+    val isbn: String? = null,
+    val title: String? = null,
+    val author: String? = null,
+    val coAuthors: List<String> = emptyList(),
+    val publisher: String? = null,
+    val publicationDate: String? = null,
+    val language: String? = null,
+    val pages: Int? = null,
+    val genre: String? = null,
+    val description: String? = null,
+    val coverUrl: String? = null,
+    val url: String? = null,
 )
 
 @Serializable

@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -143,7 +145,11 @@ public class BookService {
         book.setIsbn(isbn);
         book.setGenre(blankToNull(request.genre()));
         book.setLanguage(blankToNull(request.language()));
-        book.setPublishYear(request.year());
+        book.setPublisher(blankToNull(request.publisher()));
+        book.setUrl(blankToNull(request.url()));
+        book.setRating(request.rating());
+        book.setPublicationDate(request.publicationDate());
+        book.setCoAuthors(cleanCoAuthors(request.coAuthors(), book.getAuthor().getName()));
         book.setPages(request.pages());
         boolean read = Boolean.TRUE.equals(request.read());
         book.setRead(read);
@@ -188,6 +194,23 @@ public class BookService {
             log.info("Saving \"{}\" without a summary: {}", book.getName(), e.getMessage());
             return null;
         }
+    }
+
+    /** Trims, drops blanks, duplicates (any case) and the main author; keeps the entered order. */
+    private static List<String> cleanCoAuthors(List<String> names, String mainAuthor) {
+        if (names == null) {
+            return List.of();
+        }
+        Set<String> seen = new HashSet<>();
+        seen.add(mainAuthor.strip().toLowerCase(Locale.ROOT));
+        List<String> cleaned = new ArrayList<>();
+        for (String name : names) {
+            String value = blankToNull(name);
+            if (value != null && seen.add(value.toLowerCase(Locale.ROOT))) {
+                cleaned.add(value);
+            }
+        }
+        return cleaned;
     }
 
     private static LocalDate readDate(boolean read, LocalDate date) {

@@ -5,11 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.prijilevschi.library.data.ApiException
 import com.prijilevschi.library.data.Book
+import com.prijilevschi.library.data.BookLookup
 import com.prijilevschi.library.data.BookRequest
 import com.prijilevschi.library.data.LibraryRepository
 import com.prijilevschi.library.data.SettingsRepository
 import com.prijilevschi.library.data.Shelf
 import com.prijilevschi.library.data.SummaryRequest
+import com.prijilevschi.library.util.Images
 import com.prijilevschi.library.util.Isbn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,10 +22,18 @@ import kotlinx.coroutines.launch
 data class BookForm(
     val name: String = "",
     val authorName: String = "",
+    /** Comma-separated. */
+    val coAuthors: String = "",
     val isbn: String = "",
     val genre: String = "",
     val language: String = "",
+    val publisher: String = "",
+    val url: String = "",
+    /** 0-5 stars; null = not rated. */
+    val rating: Int? = null,
     val year: String = "",
+    /** The stored date; kept as is while the year field is unchanged so month and day are not lost. */
+    val publicationDate: String? = null,
     val pages: String = "",
     val read: Boolean = false,
     val dateRead: String? = null,
@@ -48,6 +58,7 @@ data class BookEditState(
     val newCoverJpeg: ByteArray? = null,
     val removeCover: Boolean = false,
     val generating: Boolean = false,
+    val lookingUp: Boolean = false,
     val saving: Boolean = false,
     val nameError: String? = null,
     val authorError: String? = null,
@@ -143,6 +154,54 @@ class BookEditViewModel(
         _state.update { it.copy(newCoverUri = null, newCoverJpeg = null, removeCover = it.coverUrl != null) }
     }
 
+    /** Result of the barcode scanner: fills in the ISBN and looks the book up. */
+    fun onScanned(raw: String) {
+        val isbn = Isbn.normalize(raw)
+        if (!Isbn.isValid(isbn)) {
+            _state.update { it.copy(message = "That barcode is not an ISBN. Scan the barcode on the back of the book.") }
+            return
+        }
+        update { it.copy(isbn = isbn) }
+        lookup()
+    }
+
+    fun scanFailed(message: String) = _state.update { it.copy(message = message) }
+
+    /** Looks the book up by ISBN, or by title and author, and fills the fields that are still empty. */
+    fun lookup() {
+        val form = _state.value.form
+        val isbn = form.isbn.trim().takeIf { it.isNotBlank() && Isbn.isValid(it) }
+        val title = form.name.trim().takeIf { it.isNotBlank() }
+        if (isbn == null && title == null) {
+            _state.update { it.copy(message = "Enter a valid ISBN, or a title (and author), to look the book up.") }
+            return
+        }
+        _state.update { it.copy(lookingUp = true) }
+        viewModelScope.launch {
+            try {
+                val found = repository.lookup(
+                    isbn = isbn,
+                    title = if (isbn == null) title else null,
+                    author = if (isbn == null) form.authorName.trim().ifBlank { null } else null,
+                )
+                _state.update { it.copy(lookingUp = false, form = it.form.fillMissing(found)) }
+                found.coverUrl?.let { fetchCover(it) }
+            } catch (e: ApiException) {
+                val message = if (e.status == 404) "Nothing found online for this book." else e.message
+                _state.update { it.copy(lookingUp = false, message = message) }
+            }
+        }
+    }
+
+    private suspend fun fetchCover(url: String) {
+        val s = _state.value
+        if (s.newCoverJpeg != null || (s.coverUrl != null && !s.removeCover)) return // keep the cover the user has
+        val jpeg = repository.downloadImage(url)?.let { Images.toCoverJpeg(it) } ?: return
+        _state.update {
+            if (it.newCoverJpeg == null) it.copy(newCoverJpeg = jpeg, newCoverUri = null, removeCover = false) else it
+        }
+    }
+
     fun generateSummary() {
         val form = _state.value.form
         if (form.name.isBlank()) {
@@ -186,14 +245,23 @@ class BookEditViewModel(
         }
         if (!valid) return
 
+        val year = form.year.trim().toIntOrNull()
         val request = BookRequest(
             name = form.name.trim(),
             authorName = form.authorName.trim(),
+            coAuthors = form.coAuthors.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() },
             isbn = form.isbn.trim().ifBlank { null },
             description = form.description.trim().ifBlank { null },
             genre = form.genre.trim().ifBlank { null },
             language = form.language.trim().ifBlank { null },
-            year = form.year.trim().toIntOrNull(),
+            publisher = form.publisher.trim().ifBlank { null },
+            url = form.url.trim().ifBlank { null },
+            rating = form.rating?.toDouble(),
+            publicationDate = when {
+                year == null -> null
+                form.publicationDate?.take(4)?.toIntOrNull() == year -> form.publicationDate
+                else -> "%04d-01-01".format(year)
+            },
             pages = form.pages.trim().toIntOrNull()?.takeIf { it > 0 },
             read = form.read,
             dateRead = if (form.read) form.dateRead else null,
@@ -226,15 +294,36 @@ class BookEditViewModel(
         }
     }
 
+    /** Takes the looked-up values for fields that are still empty; what the user typed is never replaced. */
+    private fun BookForm.fillMissing(found: BookLookup) = copy(
+        name = name.ifBlank { found.title.orEmpty() },
+        authorName = authorName.ifBlank { found.author.orEmpty() },
+        coAuthors = coAuthors.ifBlank { found.coAuthors.joinToString(", ") },
+        isbn = isbn.ifBlank { found.isbn.orEmpty() },
+        publisher = publisher.ifBlank { found.publisher.orEmpty() },
+        genre = genre.ifBlank { found.genre.orEmpty() },
+        language = language.ifBlank { found.language.orEmpty() },
+        pages = pages.ifBlank { found.pages?.toString().orEmpty() },
+        year = year.ifBlank { found.publicationDate?.take(4).orEmpty() },
+        publicationDate = if (year.isBlank()) found.publicationDate else publicationDate,
+        url = url.ifBlank { found.url.orEmpty() },
+        description = description.ifBlank { found.description.orEmpty() },
+    )
+
     fun messageShown() = _state.update { it.copy(message = null) }
 
     private fun Book.toForm() = BookForm(
         name = name,
         authorName = author.name,
+        coAuthors = coAuthors.joinToString(", "),
         isbn = isbn.orEmpty(),
         genre = genre.orEmpty(),
         language = language.orEmpty(),
+        publisher = publisher.orEmpty(),
+        url = url.orEmpty(),
+        rating = rating?.let { Math.round(it).toInt() },
         year = year?.toString().orEmpty(),
+        publicationDate = publicationDate,
         pages = pages?.toString().orEmpty(),
         read = read,
         dateRead = dateRead,

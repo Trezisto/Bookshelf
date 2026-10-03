@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -55,6 +56,7 @@ import com.prijilevschi.library.ui.components.ErrorMessage
 import com.prijilevschi.library.ui.components.IsoDatePickerDialog
 import com.prijilevschi.library.ui.components.Loading
 import com.prijilevschi.library.ui.components.formatDate
+import com.prijilevschi.library.ui.components.formatInstant
 import com.prijilevschi.library.ui.theme.Wood
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,6 +120,7 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onEdit: () -> Unit) {
 @Composable
 private fun BookDetails(book: Book, coverUrl: String?, onRead: (Boolean, String?) -> Unit) {
     var pickDate by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -146,7 +149,16 @@ private fun BookDetails(book: Book, coverUrl: String?, onRead: (Boolean, String?
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(book.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                 Text(book.author.name, style = MaterialTheme.typography.titleMedium)
-                book.year?.let { Text("$it", style = MaterialTheme.typography.bodyMedium) }
+                if (book.coAuthors.isNotEmpty()) {
+                    Text("with ${book.coAuthors.joinToString(", ")}", style = MaterialTheme.typography.bodyMedium)
+                }
+                val published = listOfNotNull(book.publisher, book.year?.toString()).joinToString(", ")
+                if (published.isNotEmpty()) Text(published, style = MaterialTheme.typography.bodyMedium)
+                book.rating?.let { rating ->
+                    val stars = Math.round(rating).toInt().coerceIn(0, 5)
+                    Text("★".repeat(stars) + "☆".repeat(5 - stars), color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleMedium)
+                }
             }
         }
 
@@ -176,6 +188,7 @@ private fun BookDetails(book: Book, coverUrl: String?, onRead: (Boolean, String?
             book.language?.let { AssistChip(onClick = {}, label = { Text(it) }) }
             book.pages?.let { AssistChip(onClick = {}, label = { Text("$it pages") }) }
             book.isbn?.let { AssistChip(onClick = {}, label = { Text("ISBN $it") }) }
+            book.url?.let { link -> AssistChip(onClick = { uriHandler.openUri(link) }, label = { Text("Open on the web") }) }
         }
 
         Text("Description", style = MaterialTheme.typography.titleMedium)
@@ -183,6 +196,11 @@ private fun BookDetails(book: Book, coverUrl: String?, onRead: (Boolean, String?
             book.description ?: "No description yet. Edit the book to add one or generate it with AI.",
             style = MaterialTheme.typography.bodyLarge,
             color = if (book.description == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            "Added ${formatInstant(book.createdAt)} · Modified ${formatInstant(book.modifiedAt)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.padding(bottom = 24.dp))
     }

@@ -1,16 +1,29 @@
 package com.prijilevschi.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
+import org.hibernate.envers.Audited;
+import org.hibernate.envers.NotAudited;
+import org.hibernate.envers.RelationTargetAuditMode;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A book and where it stands: shelf (location + row), position from the left and depth row (1 = front).
  * The cover photo lives in the same table but is mapped by {@link BookPhotoEntity},
  * so loading books for the shelves view never pulls the image bytes.
+ * Every change is recorded by Hibernate Envers; the author and shelf are referenced by id only.
  */
 @Entity
 @Table(name = "book")
+@Audited
+@EntityListeners(AuditingEntityListener.class)
 public class BookEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,8 +45,20 @@ public class BookEntity {
     @Column(name = "language")
     private String language;
 
-    @Column(name = "publish_year")
-    private Integer publishYear;
+    @Column(name = "publisher")
+    private String publisher;
+
+    @Column(name = "url")
+    private String url;
+
+    /** Own rating, 0-5. */
+    @Column(name = "rating")
+    private Double rating;
+
+    /** A lookup that only knows the year or month is stored as the first day of it. */
+    @Convert(converter = LocalDateStringConverter.class)
+    @Column(name = "publication_date")
+    private LocalDate publicationDate;
 
     @Column(name = "pages")
     private Integer pages;
@@ -47,10 +72,19 @@ public class BookEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "author_id", nullable = false)
+    @Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
     private AuthorEntity author;
+
+    @ElementCollection
+    @CollectionTable(name = "book_co_author", joinColumns = @JoinColumn(name = "book_id"))
+    @OrderColumn(name = "position")
+    @BatchSize(size = 100)
+    @Column(name = "co_author", nullable = false)
+    private List<String> coAuthors = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shelf_id")
+    @Audited(targetAuditMode = RelationTargetAuditMode.NOT_AUDITED)
     private ShelfEntity shelf;
 
     @Column(name = "position_number")
@@ -61,6 +95,18 @@ public class BookEntity {
 
     @Column(name = "has_photo", nullable = false)
     private boolean hasPhoto;
+
+    @CreatedDate
+    @NotAudited
+    @Convert(converter = InstantStringConverter.class)
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
+
+    @LastModifiedDate
+    @NotAudited
+    @Convert(converter = InstantStringConverter.class)
+    @Column(name = "modified_at")
+    private Instant modifiedAt;
 
     public Long getId() {
         return id;
@@ -106,12 +152,53 @@ public class BookEntity {
         this.language = language;
     }
 
-    public Integer getPublishYear() {
-        return publishYear;
+    public String getPublisher() {
+        return publisher;
     }
 
-    public void setPublishYear(Integer publishYear) {
-        this.publishYear = publishYear;
+    public void setPublisher(String publisher) {
+        this.publisher = publisher;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public Double getRating() {
+        return rating;
+    }
+
+    public void setRating(Double rating) {
+        this.rating = rating;
+    }
+
+    public LocalDate getPublicationDate() {
+        return publicationDate;
+    }
+
+    public void setPublicationDate(LocalDate publicationDate) {
+        this.publicationDate = publicationDate;
+    }
+
+    public List<String> getCoAuthors() {
+        return coAuthors;
+    }
+
+    public void setCoAuthors(List<String> coAuthors) {
+        this.coAuthors.clear();
+        this.coAuthors.addAll(coAuthors);
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public Instant getModifiedAt() {
+        return modifiedAt;
     }
 
     public Integer getPages() {

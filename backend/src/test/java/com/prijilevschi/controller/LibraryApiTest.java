@@ -3,8 +3,11 @@ package com.prijilevschi.controller;
 import com.prijilevschi.SqliteTestSupport;
 import com.prijilevschi.ai.LlmConfig;
 import com.prijilevschi.ai.SummaryService;
+import com.prijilevschi.dto.BookLookupDTO;
 import com.prijilevschi.error.SummaryUnavailableException;
+import com.prijilevschi.lookup.BookLookupService;
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,13 +40,22 @@ class LibraryApiTest extends SqliteTestSupport {
     @MockitoBean
     SummaryService summaryService;
 
+    /** Keeps the tests off the network; unstubbed calls return the request unchanged. */
+    @MockitoBean
+    BookLookupService lookupService;
+
+    @BeforeEach
+    void noGoodreadsLink() {
+        when(lookupService.withGoodreadsUrl(any())).thenAnswer(call -> call.getArgument(0));
+    }
+
     @Test
     void createsBooksOnShelvesAndFindsThemByTitleAuthorAndIsbn() throws Exception {
         long shelf = createShelf("Living room", 3, "VERTICAL");
 
         mvc.perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content("""
                         {"name":"Dune","authorName":"Frank Herbert","isbn":"978-0-441-17271-9","genre":"Sci-fi",
-                         "language":"English","year":1965,"pages":412,"shelfId":%d,"positionNumber":7,"depthRow":2,
+                         "language":"English","publicationDate":"1965-05-01","pages":412,"shelfId":%d,"positionNumber":7,"depthRow":2,
                          "description":"Desert planet."}""".formatted(shelf)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.isbn").value("9780441172719"))
@@ -52,7 +64,7 @@ class LibraryApiTest extends SqliteTestSupport {
                 .andExpect(jsonPath("$.shelf.rowNum").value(3))
                 .andExpect(jsonPath("$.positionNumber").value(7))
                 .andExpect(jsonPath("$.depthRow").value(2))
-                .andExpect(jsonPath("$.year").value(1965))
+                .andExpect(jsonPath("$.publicationDate").value("1965-05-01"))
                 .andExpect(jsonPath("$.read").value(false))
                 .andExpect(jsonPath("$.hasCover").value(false));
         createBook("""
@@ -111,6 +123,105 @@ class LibraryApiTest extends SqliteTestSupport {
         mvc.perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content("""
                         {"name":"","authorName":"A"}"""))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void storesCoAuthorsPublisherUrlAndRatingAndFindsByCoAuthor() throws Exception {
+        long id = createBook("""
+                {"name":"Good Omens","authorName":"Terry Pratchett","coAuthors":[" Neil Gaiman ","","neil gaiman","terry pratchett"],
+                 "publisher":"Gollancz","url":"https://www.goodreads.com/book/show/12067","rating":4.5,
+                 "publicationDate":"1990-05-01"}""");
+
+        mvc.perform(get("/api/books/{id}", id))
+                .andExpect(jsonPath("$.coAuthors", Matchers.contains("Neil Gaiman")))
+                .andExpect(jsonPath("$.publisher").value("Gollancz"))
+                .andExpect(jsonPath("$.url").value("https://www.goodreads.com/book/show/12067"))
+                .andExpect(jsonPath("$.rating").value(4.5));
+        mvc.perform(get("/api/books").param("q", "gaiman"))
+                .andExpect(jsonPath("$[*].name", Matchers.contains("Good Omens")));
+
+        mvc.perform(put("/api/books/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"name":"Good Omens","authorName":"Terry Pratchett","coAuthors":[]}"""))
+                .andExpect(jsonPath("$.coAuthors", empty()))
+                .andExpect(jsonPath("$.rating").value(nullValue()));
+        mvc.perform(get("/api/books").param("q", "gaiman")).andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void lookupEndpointReturnsFoundDataOr404AndValidatesInput() throws Exception {
+        BookLookupDTO dune = new BookLookupDTO("9780441172719", "Dune", "Frank Herbert", java.util.List.of(), "Ace",
+                LocalDate.of(2005, 8, 1), "English", 544, "Science fiction", null, null,
+                "https://www.goodreads.com/book/show/234225");
+        when(lookupService.byIsbn("9780441172719")).thenReturn(java.util.Optional.of(dune));
+        when(lookupService.byTitleAuthor("Dune", null)).thenReturn(java.util.Optional.of(dune));
+        when(lookupService.byTitleAuthor("Nothing", null)).thenReturn(java.util.Optional.empty());
+
+        mvc.perform(get("/api/lookup").param("isbn", "978-0-441-17271-9"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Dune"))
+                .andExpect(jsonPath("$.publicationDate").value("2005-08-01"))
+                .andExpect(jsonPath("$.url").value("https://www.goodreads.com/book/show/234225"));
+        mvc.perform(get("/api/lookup").param("title", "Dune")).andExpect(status().isOk());
+        mvc.perform(get("/api/lookup").param("title", "Nothing")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/lookup").param("isbn", "0306406153")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/lookup")).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void newBookWithoutLinkIsPassedThroughTheGoodreadsLookup() throws Exception {
+        when(lookupService.withGoodreadsUrl(any())).thenAnswer(call -> {
+            com.prijilevschi.dto.BookRequest r = call.getArgument(0);
+            return new com.prijilevschi.dto.BookRequest(r.name(), r.authorName(), r.coAuthors(), r.isbn(),
+                    r.description(), r.genre(), r.language(), r.publisher(), "https://www.goodreads.com/book/show/1",
+                    r.rating(), r.publicationDate(), r.pages(), r.read(), r.dateRead(), r.shelfId(),
+                    r.positionNumber(), r.depthRow());
+        });
+        long id = createBook("""
+                {"name":"Linked","authorName":"A"}""");
+
+        mvc.perform(get("/api/books/{id}", id))
+                .andExpect(jsonPath("$.url").value("https://www.goodreads.com/book/show/1"));
+    }
+
+    @Test
+    void rejectsOutOfRangeRatingAndNonHttpUrl() throws Exception {
+        mvc.perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"name":"X","authorName":"A","rating":5.5}"""))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content("""
+                        {"name":"X","authorName":"A","url":"javascript:alert(1)"}"""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void recordsAddedAndModifiedDatesAndRevisionHistory() throws Exception {
+        long id = createBook("""
+                {"name":"Draft","authorName":"A","publicationDate":"2001-01-01"}""");
+        MvcResult created = mvc.perform(get("/api/books/{id}", id))
+                .andExpect(jsonPath("$.createdAt", notNullValue()))
+                .andExpect(jsonPath("$.modifiedAt", notNullValue()))
+                .andReturn();
+        String createdAt = com.jayway.jsonpath.JsonPath.read(created.getResponse().getContentAsString(), "$.createdAt");
+
+        Thread.sleep(20);
+        mvc.perform(put("/api/books/{id}", id).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"name":"Final","authorName":"A","publicationDate":"2001-01-01","rating":3}"""))
+                .andExpect(jsonPath("$.createdAt").value(createdAt))
+                .andExpect(jsonPath("$.modifiedAt", not(createdAt)));
+
+        mvc.perform(get("/api/books/{id}/history", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].type").value("ADD"))
+                .andExpect(jsonPath("$[0].name").value("Draft"))
+                .andExpect(jsonPath("$[1].type").value("MOD"))
+                .andExpect(jsonPath("$[1].name").value("Final"))
+                .andExpect(jsonPath("$[1].rating").value(3.0));
+
+        mvc.perform(delete("/api/books/{id}", id)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/books/{id}/history", id))
+                .andExpect(jsonPath("$[2].type").value("DEL"));
+        mvc.perform(get("/api/books/{id}/history", 987654)).andExpect(status().isNotFound());
     }
 
     @Test
