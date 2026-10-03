@@ -13,4 +13,4 @@ COPY --from=build /app/build/libs/*.jar app.jar
 ENV LIBRARY_DB_PATH=/data/library.db
 VOLUME /data
 EXPOSE 8080
-CMD ["java", "-jar", "app.jar"]
+CMD ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]

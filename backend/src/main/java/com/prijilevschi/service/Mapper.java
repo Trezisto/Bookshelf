@@ -7,6 +7,8 @@ import com.prijilevschi.entity.AuthorEntity;
 import com.prijilevschi.entity.BookEntity;
 import com.prijilevschi.entity.ShelfEntity;
 
+import java.util.List;
+
 final class Mapper {
     private Mapper() {
     }
@@ -28,14 +30,20 @@ final class Mapper {
                 book.getDescription(),
                 book.getGenre(),
                 book.getLanguage(),
-                book.getPublishYear(),
+                book.getPublisher(),
+                book.getUrl(),
+                book.getRating(),
+                book.getPublicationDate(),
                 book.getPages(),
                 book.isRead(),
                 book.getDateRead(),
                 toDto(book.getAuthor()),
+                List.copyOf(book.getCoAuthors()),
                 toDto(book.getShelf()),
                 book.getPositionNumber(),
                 book.getDepthRow(),
-                book.isHasPhoto());
+                book.isHasPhoto(),
+                book.getCreatedAt(),
+                book.getModifiedAt());
     }
 }

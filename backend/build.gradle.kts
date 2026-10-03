@@ -35,6 +35,7 @@ dependencies {
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1")
     implementation("org.xerial:sqlite-jdbc:3.53.4.0")
     implementation("org.hibernate.orm:hibernate-community-dialects")
+    implementation("org.hibernate.orm:hibernate-envers")
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
@@ -45,6 +46,12 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    // sqlite-jdbc loads a native library; JDK 24+ warns unless native access is enabled
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
+tasks.withType<org.springframework.boot.gradle.tasks.run.BootRun> {
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 // Only the executable Spring Boot jar is needed

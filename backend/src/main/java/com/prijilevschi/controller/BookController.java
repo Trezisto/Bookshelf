@@ -3,8 +3,10 @@ package com.prijilevschi.controller;
 import com.prijilevschi.ai.LlmConfig;
 import com.prijilevschi.dto.BookDTO;
 import com.prijilevschi.dto.BookRequest;
+import com.prijilevschi.dto.BookRevisionDTO;
 import com.prijilevschi.dto.ReadRequest;
 import com.prijilevschi.entity.BookPhotoEntity;
+import com.prijilevschi.service.BookHistoryService;
 import com.prijilevschi.service.BookService;
 import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
@@ -25,9 +27,11 @@ import static com.prijilevschi.ai.LlmConfig.MODEL_HEADER;
 @RequestMapping("/api/books")
 public class BookController {
     private final BookService bookService;
+    private final BookHistoryService historyService;
 
-    public BookController(BookService bookService) {
+    public BookController(BookService bookService, BookHistoryService historyService) {
         this.bookService = bookService;
+        this.historyService = historyService;
     }
 
     @GetMapping
@@ -46,6 +50,12 @@ public class BookController {
     @GetMapping("/{id}")
     public BookDTO get(@PathVariable Long id) {
         return bookService.get(id);
+    }
+
+    /** Change history of a book from the Envers audit tables, oldest first. */
+    @GetMapping("/{id}/history")
+    public List<BookRevisionDTO> history(@PathVariable Long id) {
+        return historyService.history(id);
     }
 
     /** When the description is blank and an LLM API key header is present, a summary is generated. */

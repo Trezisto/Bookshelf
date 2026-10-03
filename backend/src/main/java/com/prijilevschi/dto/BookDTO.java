@@ -1,6 +1,8 @@
 package com.prijilevschi.dto;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public record BookDTO(
         Long id,
@@ -9,13 +11,19 @@ public record BookDTO(
         String description,
         String genre,
         String language,
-        Integer year,
+        String publisher,
+        String url,
+        Double rating,
+        LocalDate publicationDate,
         Integer pages,
         boolean read,
         LocalDate dateRead,
         AuthorDTO author,
+        List<String> coAuthors,
         ShelfDTO shelf,
         Integer positionNumber,
         int depthRow,
-        boolean hasCover) {
+        boolean hasCover,
+        Instant createdAt,
+        Instant modifiedAt) {
 }

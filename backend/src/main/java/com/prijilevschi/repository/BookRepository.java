@@ -14,7 +14,7 @@ public interface BookRepository extends JpaRepository<BookEntity, Long> {
 
     /**
      * Combined search used by the shelves screen. Every filter is optional:
-     * {@code pattern} (lower-case, already wrapped in %) matches the title or the author's name,
+     * {@code pattern} (lower-case, already wrapped in %) matches the title or the name of the author or a co-author,
      * {@code isbn} (normalised) matches exactly.
      */
     @Query("""
@@ -22,6 +22,7 @@ public interface BookRepository extends JpaRepository<BookEntity, Long> {
               join fetch b.author a
               left join fetch b.shelf s
             where (:pattern is null or lower(b.name) like :pattern or lower(a.name) like :pattern
+                   or exists (select 1 from b.coAuthors c where lower(c) like :pattern)
                    or (:isbn is not null and b.isbn = :isbn))
               and (:shelfId is null or s.id = :shelfId)
               and (:read is null or b.read = :read)
