@@ -6,6 +6,7 @@ import com.prijilevschi.dto.BookRequest;
 import com.prijilevschi.dto.BookRevisionDTO;
 import com.prijilevschi.dto.ReadRequest;
 import com.prijilevschi.entity.BookPhotoEntity;
+import com.prijilevschi.lookup.BookLookupService;
 import com.prijilevschi.service.BookHistoryService;
 import com.prijilevschi.service.BookService;
 import jakarta.validation.Valid;
@@ -28,10 +29,12 @@ import static com.prijilevschi.ai.LlmConfig.MODEL_HEADER;
 public class BookController {
     private final BookService bookService;
     private final BookHistoryService historyService;
+    private final BookLookupService lookupService;
 
-    public BookController(BookService bookService, BookHistoryService historyService) {
+    public BookController(BookService bookService, BookHistoryService historyService, BookLookupService lookupService) {
         this.bookService = bookService;
         this.historyService = historyService;
+        this.lookupService = lookupService;
     }
 
     @GetMapping
@@ -58,14 +61,17 @@ public class BookController {
         return historyService.history(id);
     }
 
-    /** When the description is blank and an LLM API key header is present, a summary is generated. */
+    /**
+     * When the description is blank and an LLM API key header is present, a summary is generated.
+     * When the link is blank, the book's Goodreads page is looked up by ISBN or by title and author.
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public BookDTO create(@Valid @RequestBody BookRequest request,
                           @RequestHeader(value = API_KEY_HEADER, required = false) String apiKey,
                           @RequestHeader(value = BASE_URL_HEADER, required = false) String baseUrl,
                           @RequestHeader(value = MODEL_HEADER, required = false) String model) {
-        return bookService.create(request, new LlmConfig(apiKey, baseUrl, model));
+        return bookService.create(lookupService.withGoodreadsUrl(request), new LlmConfig(apiKey, baseUrl, model));
     }
 
     @PutMapping("/{id}")

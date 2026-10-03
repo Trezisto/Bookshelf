@@ -3,8 +3,11 @@ package com.prijilevschi.controller;
 import com.prijilevschi.SqliteTestSupport;
 import com.prijilevschi.ai.LlmConfig;
 import com.prijilevschi.ai.SummaryService;
+import com.prijilevschi.dto.BookLookupDTO;
 import com.prijilevschi.error.SummaryUnavailableException;
+import com.prijilevschi.lookup.BookLookupService;
 import org.hamcrest.Matchers;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -36,6 +39,15 @@ class LibraryApiTest extends SqliteTestSupport {
 
     @MockitoBean
     SummaryService summaryService;
+
+    /** Keeps the tests off the network; unstubbed calls return the request unchanged. */
+    @MockitoBean
+    BookLookupService lookupService;
+
+    @BeforeEach
+    void noGoodreadsLink() {
+        when(lookupService.withGoodreadsUrl(any())).thenAnswer(call -> call.getArgument(0));
+    }
 
     @Test
     void createsBooksOnShelvesAndFindsThemByTitleAuthorAndIsbn() throws Exception {
@@ -133,6 +145,42 @@ class LibraryApiTest extends SqliteTestSupport {
                 .andExpect(jsonPath("$.coAuthors", empty()))
                 .andExpect(jsonPath("$.rating").value(nullValue()));
         mvc.perform(get("/api/books").param("q", "gaiman")).andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    void lookupEndpointReturnsFoundDataOr404AndValidatesInput() throws Exception {
+        BookLookupDTO dune = new BookLookupDTO("9780441172719", "Dune", "Frank Herbert", java.util.List.of(), "Ace",
+                LocalDate.of(2005, 8, 1), "English", 544, "Science fiction", null, null,
+                "https://www.goodreads.com/book/show/234225");
+        when(lookupService.byIsbn("9780441172719")).thenReturn(java.util.Optional.of(dune));
+        when(lookupService.byTitleAuthor("Dune", null)).thenReturn(java.util.Optional.of(dune));
+        when(lookupService.byTitleAuthor("Nothing", null)).thenReturn(java.util.Optional.empty());
+
+        mvc.perform(get("/api/lookup").param("isbn", "978-0-441-17271-9"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.title").value("Dune"))
+                .andExpect(jsonPath("$.publicationDate").value("2005-08-01"))
+                .andExpect(jsonPath("$.url").value("https://www.goodreads.com/book/show/234225"));
+        mvc.perform(get("/api/lookup").param("title", "Dune")).andExpect(status().isOk());
+        mvc.perform(get("/api/lookup").param("title", "Nothing")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/lookup").param("isbn", "0306406153")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/lookup")).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void newBookWithoutLinkIsPassedThroughTheGoodreadsLookup() throws Exception {
+        when(lookupService.withGoodreadsUrl(any())).thenAnswer(call -> {
+            com.prijilevschi.dto.BookRequest r = call.getArgument(0);
+            return new com.prijilevschi.dto.BookRequest(r.name(), r.authorName(), r.coAuthors(), r.isbn(),
+                    r.description(), r.genre(), r.language(), r.publisher(), "https://www.goodreads.com/book/show/1",
+                    r.rating(), r.publicationDate(), r.pages(), r.read(), r.dateRead(), r.shelfId(),
+                    r.positionNumber(), r.depthRow());
+        });
+        long id = createBook("""
+                {"name":"Linked","authorName":"A"}""");
+
+        mvc.perform(get("/api/books/{id}", id))
+                .andExpect(jsonPath("$.url").value("https://www.goodreads.com/book/show/1"));
     }
 
     @Test
