@@ -2,6 +2,7 @@ package com.prijilevschi.library.util
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
 import androidx.core.content.FileProvider
@@ -25,6 +26,23 @@ object Images {
         ByteArrayOutputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
             bitmap.recycle()
+            out.toByteArray()
+        }
+    }
+
+    /** Re-encodes downloaded image bytes as a cover JPEG of at most 1024px; null if they are not a usable image. */
+    suspend fun toCoverJpeg(bytes: ByteArray): ByteArray? = withContext(Dispatchers.IO) {
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@withContext null
+        if (bitmap.width < 50 || bitmap.height < 50) {
+            bitmap.recycle() // e.g. the 1px placeholder some covers servers answer with
+            return@withContext null
+        }
+        val scale = MAX_SIZE.toFloat() / maxOf(bitmap.width, bitmap.height)
+        val scaled = if (scale < 1f) {
+            Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+        } else bitmap
+        ByteArrayOutputStream().use { out ->
+            scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
             out.toByteArray()
         }
     }

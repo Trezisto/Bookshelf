@@ -1,13 +1,16 @@
 package com.prijilevschi.library.data
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
 import retrofit2.Retrofit
@@ -102,6 +105,18 @@ class LibraryRepository(
             s.llmBaseUrl.ifBlank { null },
             s.llmModel.ifBlank { null },
         ).summary
+    }
+
+    suspend fun lookup(isbn: String?, title: String?, author: String?): BookLookup =
+        call { api().lookup(isbn = isbn, title = title, author = author) }
+
+    /** Downloads a cover found by a lookup; null when it cannot be fetched. */
+    suspend fun downloadImage(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (response.isSuccessful) response.body.bytes() else null
+            }
+        }.getOrNull()
     }
 
     suspend fun saveShelf(id: Long?, request: ShelfRequest): Shelf = call {

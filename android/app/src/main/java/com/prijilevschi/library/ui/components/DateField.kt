@@ -9,12 +9,21 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 fun formatDate(iso: String?): String = iso?.let {
     runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)) }.getOrDefault(it)
+} ?: ""
+
+/** Date part of an ISO instant (2026-10-03T12:00:00Z) in the phone's time zone. */
+fun formatInstant(iso: String?): String = iso?.let {
+    runCatching {
+        Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalDate()
+            .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
+    }.getOrDefault(it)
 } ?: ""
 
 /** Material date picker that works with ISO date strings (yyyy-MM-dd). */

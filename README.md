@@ -94,3 +94,11 @@ Under **Settings**, set the server URL: `http://10.0.2.2:8080/` from the emulato
 
 CI (`.github/workflows`) builds the backend with tests and builds a debug APK, which you can download from
 the workflow run's artifacts.
+
+Development
+-----------
+* `backend/` – Spring Boot (JDK 25, Gradle), SQLite + Flyway, Hibernate Envers audit trail (`GET /api/books/{id}/history`).
+* `android/` – Compose app: scan an ISBN barcode (Google code scanner) or type an ISBN / title to fill the book from the web.
+* Lookup (`GET /api/lookup?isbn=…` or `?title=…&author=…`) combines Open Library and Google Books. The Goodreads link comes
+  from the Open Library record, otherwise from a `site:goodreads.com` web search; goodreads.com itself is never fetched.
+  Optional: `library.lookup.google-books-key` (env `LIBRARY_LOOKUP_GOOGLE_BOOKS_KEY`) avoids Google's small anonymous quota.

@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -69,7 +71,9 @@ import com.prijilevschi.library.ui.components.Loading
 import com.prijilevschi.library.ui.components.SuggestField
 import com.prijilevschi.library.ui.components.formatDate
 import com.prijilevschi.library.ui.theme.Wood
+import com.prijilevschi.library.util.BarcodeScanner
 import com.prijilevschi.library.util.Images
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -144,13 +148,19 @@ private fun BookForm(state: BookEditState, vm: BookEditViewModel, onOpenSettings
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
-            value = form.isbn,
-            onValueChange = { v -> vm.update { it.copy(isbn = v) } },
-            label = { Text("ISBN (optional)") },
-            isError = state.isbnError != null,
-            supportingText = state.isbnError?.let { { Text(it) } },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            value = form.coAuthors,
+            onValueChange = { v -> vm.update { it.copy(coAuthors = v) } },
+            label = { Text("Co-authors (optional, comma-separated)") },
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        IsbnField(state, vm)
+        OutlinedTextField(
+            value = form.publisher,
+            onValueChange = { v -> vm.update { it.copy(publisher = v) } },
+            label = { Text("Publisher") },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -187,6 +197,16 @@ private fun BookForm(state: BookEditState, vm: BookEditViewModel, onOpenSettings
                 modifier = Modifier.weight(1f),
             )
         }
+
+        OutlinedTextField(
+            value = form.url,
+            onValueChange = { v -> vm.update { it.copy(url = v.trim()) } },
+            label = { Text("Link (Goodreads, found automatically when empty)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        RatingRow(form.rating) { rating -> vm.update { it.copy(rating = rating) } }
 
         Text("Location", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
         ShelfPicker(state, vm)
@@ -277,6 +297,69 @@ private fun BookForm(state: BookEditState, vm: BookEditViewModel, onOpenSettings
     }
 }
 
+/** ISBN input with a barcode-scan button, plus the lookup that fills the other fields from the web. */
+@Composable
+private fun IsbnField(state: BookEditState, vm: BookEditViewModel) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val form = state.form
+    OutlinedTextField(
+        value = form.isbn,
+        onValueChange = { v -> vm.update { it.copy(isbn = v) } },
+        label = { Text("ISBN (optional)") },
+        isError = state.isbnError != null,
+        supportingText = state.isbnError?.let { { Text(it) } },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = {
+                scope.launch {
+                    try {
+                        BarcodeScanner.scan(context)?.let(vm::onScanned)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        vm.scanFailed("The barcode scanner is not available (needs Google Play services): ${e.message}")
+                    }
+                }
+            }) { AppIcon(R.drawable.ic_camera, "Scan the barcode") }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
+    FilledTonalButton(
+        onClick = vm::lookup,
+        enabled = !state.lookingUp && (form.isbn.isNotBlank() || form.name.isNotBlank()),
+    ) {
+        if (state.lookingUp) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text("Looking up…")
+        } else {
+            AppIcon(R.drawable.ic_search, null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (form.isbn.isNotBlank()) "Look up by ISBN" else "Look up by title and author")
+        }
+    }
+}
+
+/** Five tappable stars; tapping the current rating clears it. */
+@Composable
+private fun RatingRow(rating: Int?, onRating: (Int?) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Rating", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 12.dp))
+        (1..5).forEach { star ->
+            Text(
+                if (rating != null && star <= rating) "★" else "☆",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clickable(role = Role.Button, onClickLabel = "$star stars") { onRating(if (rating == star) null else star) }
+                    .padding(horizontal = 4.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun ShelfPicker(state: BookEditState, vm: BookEditViewModel) {
     var open by remember { mutableStateOf(false) }
@@ -326,7 +409,7 @@ private fun CoverPicker(state: BookEditState, vm: BookEditViewModel) {
                 .background(Wood.Mid),
             contentAlignment = Alignment.Center,
         ) {
-            val model: Any? = state.newCoverUri ?: state.coverUrl.takeUnless { state.removeCover }
+            val model: Any? = state.newCoverUri ?: state.newCoverJpeg ?: state.coverUrl.takeUnless { state.removeCover }
             if (model != null) {
                 AsyncImage(model = model, contentDescription = "Cover", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             } else {
@@ -355,7 +438,7 @@ private fun CoverPicker(state: BookEditState, vm: BookEditViewModel) {
                 Spacer(Modifier.width(8.dp))
                 Text("From gallery")
             }
-            if (state.newCoverUri != null || (state.coverUrl != null && !state.removeCover)) {
+            if (state.newCoverUri != null || state.newCoverJpeg != null || (state.coverUrl != null && !state.removeCover)) {
                 TextButton(onClick = vm::removeCover) { Text("Remove cover") }
             }
         }

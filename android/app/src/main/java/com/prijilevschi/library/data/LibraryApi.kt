@@ -63,6 +63,14 @@ interface LibraryApi {
     @DELETE("api/books/{id}/cover")
     suspend fun deleteCover(@Path("id") id: Long)
 
+    /** Either [isbn], or [title] with an optional [author]. 404 when nothing is found. */
+    @GET("api/lookup")
+    suspend fun lookup(
+        @Query("isbn") isbn: String? = null,
+        @Query("title") title: String? = null,
+        @Query("author") author: String? = null,
+    ): BookLookup
+
     @POST("api/ai/summary")
     suspend fun summary(
         @Body request: SummaryRequest,
