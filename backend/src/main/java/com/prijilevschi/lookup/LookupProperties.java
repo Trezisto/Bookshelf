@@ -4,11 +4,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
 
-/** Endpoints of the public book data sources (overridable for tests) and the HTTP timeouts. */
+/**
+ * Endpoints of the public book data sources (overridable for tests) and the HTTP timeouts.
+ * {@code googleBooksKey} is optional; without it Google Books applies a small shared anonymous quota.
+ */
 @ConfigurationProperties("library.lookup")
 public record LookupProperties(
         String openLibraryUrl,
         String googleBooksUrl,
+        String googleBooksKey,
         String coversUrl,
         String webSearchUrl,
         Duration connectTimeout,

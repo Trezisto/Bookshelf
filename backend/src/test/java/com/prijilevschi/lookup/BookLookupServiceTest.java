@@ -43,7 +43,7 @@ class BookLookupServiceTest {
         });
         server.start();
         String base = server.url("/").toString().replaceAll("/$", "");
-        LookupProperties properties = new LookupProperties(base, base + "/books/v1", "https://covers.test",
+        LookupProperties properties = new LookupProperties(base, base + "/books/v1", null, "https://covers.test",
                 base + "/html/", Duration.ofSeconds(2), Duration.ofSeconds(2));
         service = new BookLookupService(new OpenLibraryClient(properties), new GoogleBooksClient(properties),
                 new GoodreadsUrlResolver(properties));

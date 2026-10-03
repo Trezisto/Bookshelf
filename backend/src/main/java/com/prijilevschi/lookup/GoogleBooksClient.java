@@ -19,8 +19,11 @@ class GoogleBooksClient {
     private static final Logger log = LoggerFactory.getLogger(GoogleBooksClient.class);
 
     private final RestClient client;
+    private final String apiKey;
 
     GoogleBooksClient(LookupProperties properties) {
+        this.apiKey = properties.googleBooksKey() == null || properties.googleBooksKey().isBlank()
+                ? null : properties.googleBooksKey().strip();
         this.client = HttpSources.client(properties.googleBooksUrl(), properties);
     }
 
@@ -37,7 +40,8 @@ class GoogleBooksClient {
         JsonNode result;
         try {
             result = client.get()
-                    .uri(uri -> uri.path("/volumes").queryParam("q", query).queryParam("maxResults", 1).build())
+                    .uri(uri -> uri.path("/volumes").queryParam("q", query).queryParam("maxResults", 1)
+                            .queryParamIfPresent("key", Optional.ofNullable(apiKey)).build())
                     .retrieve().body(JsonNode.class);
         } catch (RestClientException e) {
             log.info("Google Books request failed: {}", e.getMessage());
