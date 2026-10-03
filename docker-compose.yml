@@ -1,0 +1,17 @@
+services:
+  app:
+    image: 'home-library-backend:latest'
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: home-library
+    environment:
+      - LIBRARY_DB_PATH=/data/library.db
+    volumes:
+      - library-data:/data
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  library-data:
