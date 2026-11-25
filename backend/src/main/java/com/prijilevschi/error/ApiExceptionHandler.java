@@ -34,6 +34,11 @@ public class ApiExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
     }
 
+    @ExceptionHandler(LlmEndpointNotAllowedException.class)
+    ProblemDetail llmEndpointNotAllowed(LlmEndpointNotAllowedException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
     @ExceptionHandler(SummaryUnavailableException.class)
     ProblemDetail summaryUnavailable(SummaryUnavailableException e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, e.getMessage());

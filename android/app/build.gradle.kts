@@ -12,14 +12,33 @@ android {
         applicationId = "com.prijilevschi.library"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // CI passes -PversionCode=<run number>; bump versionName by hand for each release
+        versionCode = providers.gradleProperty("versionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.0"
+    }
+
+    // Release signing comes from the environment (CI secrets), never from the repository.
+    // Without it, release builds are produced unsigned.
+    val keystoreFile = System.getenv("BOOKSHELF_KEYSTORE_FILE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        if (keystoreFile != null) {
+            create("release") {
+                storeFile = file(keystoreFile)
+                storePassword = System.getenv("BOOKSHELF_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("BOOKSHELF_KEY_ALIAS")
+                keyPassword = System.getenv("BOOKSHELF_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (keystoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

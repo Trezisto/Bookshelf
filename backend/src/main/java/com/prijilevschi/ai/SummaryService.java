@@ -1,5 +1,6 @@
 package com.prijilevschi.ai;
 
+import com.prijilevschi.error.LlmEndpointNotAllowedException;
 import com.prijilevschi.error.SummaryUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,9 +42,14 @@ public class SummaryService {
         if (config == null || !config.hasApiKey()) {
             throw new SummaryUnavailableException("No LLM API key configured. Add one in the app settings.");
         }
+        String baseUrl = orDefault(config.baseUrl(), properties.defaultBaseUrl());
+        if (!properties.isAllowed(baseUrl)) {
+            throw new LlmEndpointNotAllowedException("This server does not allow the AI base URL " + baseUrl
+                    + ". Pick one of the presets, or ask the server owner to add it to library.llm.allowed-base-urls.");
+        }
         OpenAiChatModel model = OpenAiChatModel.builder()
                 .options(OpenAiChatOptions.builder()
-                        .baseUrl(orDefault(config.baseUrl(), properties.defaultBaseUrl()))
+                        .baseUrl(baseUrl)
                         .apiKey(config.apiKey().trim())
                         .model(orDefault(config.model(), properties.defaultModel()))
                         .temperature(0.3)
@@ -61,8 +67,10 @@ public class SummaryService {
             ChatResponse response = model.call(prompt);
             summary = response.getResult() == null ? null : response.getResult().getOutput().getText();
         } catch (RuntimeException e) {
-            log.warn("LLM call failed: {}", e.getMessage());
-            throw new SummaryUnavailableException("The LLM request failed: " + e.getMessage(), e);
+            // details stay in the log: the response of an arbitrary endpoint is not echoed to the client
+            log.warn("LLM call to {} failed: {}", baseUrl, e.getMessage());
+            throw new SummaryUnavailableException(
+                    "The AI request failed. Check the API key, base URL and model in Settings.", e);
         }
         if (summary == null || summary.isBlank()) {
             throw new SummaryUnavailableException("The LLM returned an empty answer.");

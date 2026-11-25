@@ -45,3 +45,8 @@ captures/
 
 ### VS Code ###
 .vscode/
+
+# Release signing keys
+*.jks
+*.keystore
+.env

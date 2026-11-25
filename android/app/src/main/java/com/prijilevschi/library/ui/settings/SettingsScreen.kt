@@ -51,6 +51,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var showKey by remember { mutableStateOf(false) }
+    var showToken by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     LaunchedEffect(state.message) {
@@ -82,6 +83,21 @@ fun SettingsScreen(onBack: () -> Unit) {
                 label = { Text("Server URL") },
                 supportingText = { Text("Emulator: http://10.0.2.2:8080/ · Phone: http://<computer's IP>:8080/") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = s.serverToken,
+                onValueChange = { v -> vm.update { it.copy(serverToken = v) } },
+                label = { Text("Server token") },
+                supportingText = { Text("The LIBRARY_API_TOKEN the server was started with") },
+                visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showToken = !showToken }) {
+                        AppIcon(R.drawable.ic_visibility, if (showToken) "Hide token" else "Show token")
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
