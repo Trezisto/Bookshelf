@@ -5,8 +5,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -145,10 +147,30 @@ class LibraryRepository(
     }
 
     companion object {
-        fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        fun defaultHttpClient(settingsRepository: SettingsRepository): OkHttpClient = OkHttpClient.Builder()
+            .addInterceptor(serverTokenInterceptor(settingsRepository))
             .connectTimeout(10, TimeUnit.SECONDS)
             // summaries can take a while on free LLM tiers
             .readTimeout(60, TimeUnit.SECONDS)
             .build()
+
+        /**
+         * Adds the server token to requests for the library server only (API calls and cover images),
+         * never to other hosts such as the cover downloads from a web lookup.
+         */
+        fun serverTokenInterceptor(settingsRepository: SettingsRepository) = Interceptor { chain ->
+            val request = chain.request()
+            val settings = settingsRepository.latest ?: runBlocking { settingsRepository.current() }
+            val token = settings.serverToken
+            if (token.isBlank() || !isServerRequest(request.url.toString(), settings.serverUrl)) {
+                chain.proceed(request)
+            } else {
+                chain.proceed(request.newBuilder().header("Authorization", "Bearer $token").build())
+            }
+        }
+
+        /** [serverUrl] is normalised to end with "/", so a prefix match also checks host and port. */
+        internal fun isServerRequest(url: String, serverUrl: String): Boolean =
+            url.startsWith(serverUrl, ignoreCase = true)
     }
 }

@@ -1,5 +1,6 @@
 package com.prijilevschi.ai;
 
+import com.prijilevschi.error.LlmEndpointNotAllowedException;
 import com.prijilevschi.error.SummaryUnavailableException;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,7 +26,8 @@ class SummaryServiceTest {
     void setUp() throws IOException {
         server = new MockWebServer();
         server.start();
-        service = new SummaryService(new LlmProperties("http://unused.invalid/v1", "default-model", Duration.ofSeconds(10)));
+        service = new SummaryService(new LlmProperties("http://unused.invalid/v1", "default-model", Duration.ofSeconds(10),
+                List.of(server.url("/v1/").toString())));
     }
 
     @AfterEach
@@ -71,7 +74,17 @@ class SummaryServiceTest {
         LlmConfig config = new LlmConfig("bad", server.url("/v1").toString(), "m");
 
         assertThatThrownBy(() -> service.summarize("Dune", "Frank Herbert", null, null, config))
-                .isInstanceOf(SummaryUnavailableException.class);
+                .isInstanceOf(SummaryUnavailableException.class)
+                .hasMessageNotContaining("Invalid API Key");
+    }
+
+    @Test
+    void baseUrlOutsideTheAllowListIsRejectedWithoutCallingIt() {
+        LlmConfig config = new LlmConfig("key", server.url("/internal").toString(), "m");
+
+        assertThatThrownBy(() -> service.summarize("Dune", null, null, null, config))
+                .isInstanceOf(LlmEndpointNotAllowedException.class);
+        assertThat(server.getRequestCount()).isZero();
     }
 
     @Test

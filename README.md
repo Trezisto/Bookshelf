@@ -32,15 +32,24 @@ dialect and doesn't map the book → author/shelf links, so it would only add co
 
 ## Run the backend
 
+Every `/api` request needs `Authorization: Bearer <token>`, where the token is the server's `LIBRARY_API_TOKEN`
+(at least 16 characters). The server refuses to start without one. Enter the same token in the app under
+**Settings → Server token**.
+
 ```bash
 cd backend
+export LIBRARY_API_TOKEN=$(openssl rand -hex 24)
 ./gradlew bootRun            # SQLite file at ./data/library.db (override with LIBRARY_DB_PATH)
 ./gradlew build              # compile + tests (each test class runs on its own SQLite file)
 ```
 
+For quick local experiments only, `LIBRARY_ALLOW_ANONYMOUS=true` starts the server without a token; then anyone who
+can reach the port can change or delete the library.
+
 Or with Docker (the database lives in the `library-data` volume):
 
 ```bash
+echo "LIBRARY_API_TOKEN=$(openssl rand -hex 24)" > .env
 docker compose up --build
 ```
 
@@ -74,6 +83,10 @@ The app sends it in a request header, and the server never stores it. Free optio
 
 Without a key, descriptions are simply typed by hand.
 
+The server only calls the base URLs in `library.llm.allowed-base-urls` (the three above plus OpenAI). To use another
+OpenAI-compatible endpoint, add it there, e.g. `LIBRARY_LLM_ALLOWED_BASE_URLS=https://api.groq.com/openai/v1,https://my-llm.example/v1`.
+Summaries are generated before the book is saved, so a slow LLM never holds the database.
+
 ## Run the Android app
 
 Open `android/` in Android Studio and run it, or:
@@ -84,7 +97,7 @@ cd android
 ```
 
 Under **Settings**, set the server URL: `http://10.0.2.2:8080/` from the emulator (the default), or
-`http://<your computer's LAN IP>:8080/` from a phone on the same Wi-Fi. Then:
+`http://<your computer's LAN IP>:8080/` from a phone on the same Wi-Fi, and the server token. Then:
 
 1. **Menu → Manage shelves**: add a shelf for every row of your bookcases (e.g. *Living room*, rows 1–5).
 2. **+**: add a book with its title and author, take a photo of the cover, pick its shelf and depth row
@@ -92,8 +105,18 @@ Under **Settings**, set the server URL: `http://10.0.2.2:8080/` from the emulato
 3. On the home screen, search by title, author or ISBN. Matching books light up on their shelves, and
    a list shows exactly where each one is.
 
-CI (`.github/workflows`) builds the backend with tests and builds a debug APK, which you can download from
-the workflow run's artifacts.
+CI (`.github/workflows`) builds the backend with tests, a debug APK, and a shrunk (R8) release APK + App Bundle,
+which you can download from the workflow run's artifacts.
+
+### Release builds
+
+`versionCode` comes from `-PversionCode` (CI uses the run number); bump `versionName` with `-PversionName` or in
+`app/build.gradle.kts`. Release signing reads `BOOKSHELF_KEYSTORE_FILE`, `BOOKSHELF_KEYSTORE_PASSWORD`,
+`BOOKSHELF_KEY_ALIAS` and `BOOKSHELF_KEY_PASSWORD`; without them the release build is unsigned. In CI, add the
+repository secrets `ANDROID_KEYSTORE_BASE64` (`base64 -w0 release.jks`), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Create a key once with
+`keytool -genkeypair -v -keystore release.jks -keyalg RSA -keysize 4096 -validity 10000 -alias bookshelf` and keep it
+safe: losing it means you can no longer update the app on the Play Store.
 
 Development
 -----------

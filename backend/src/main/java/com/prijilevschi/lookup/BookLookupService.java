@@ -97,11 +97,7 @@ public class BookLookupService {
         try {
             Optional<String> url = goodreadsUrl(isbn != null && Isbn.isValid(isbn) ? isbn : null,
                     request.name(), request.authorName());
-            return url.map(found -> new BookRequest(request.name(), request.authorName(), request.coAuthors(),
-                    request.isbn(), request.description(), request.genre(), request.language(), request.publisher(),
-                    found, request.rating(), request.publicationDate(), request.pages(), request.read(),
-                    request.dateRead(), request.shelfId(), request.positionNumber(), request.depthRow()))
-                    .orElse(request);
+            return url.map(request::withUrl).orElse(request);
         } catch (RuntimeException e) {
             log.info("Saving \"{}\" without a Goodreads link: {}", request.name(), e.getMessage());
             return request;

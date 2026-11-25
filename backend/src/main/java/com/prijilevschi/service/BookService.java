@@ -1,7 +1,5 @@
 package com.prijilevschi.service;
 
-import com.prijilevschi.ai.LlmConfig;
-import com.prijilevschi.ai.SummaryService;
 import com.prijilevschi.dto.BookDTO;
 import com.prijilevschi.dto.BookRequest;
 import com.prijilevschi.dto.ReadRequest;
@@ -11,11 +9,8 @@ import com.prijilevschi.entity.ShelfEntity;
 import com.prijilevschi.error.BadRequestException;
 import com.prijilevschi.error.ConflictException;
 import com.prijilevschi.error.NotFoundException;
-import com.prijilevschi.error.SummaryUnavailableException;
 import com.prijilevschi.repository.BookPhotoRepository;
 import com.prijilevschi.repository.BookRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,22 +25,19 @@ import java.util.Set;
 @Transactional
 public class BookService {
 
-    private static final Logger log = LoggerFactory.getLogger(BookService.class);
     private static final Set<String> COVER_TYPES = Set.of("image/jpeg", "image/png", "image/webp");
 
     private final BookRepository bookRepository;
     private final BookPhotoRepository bookPhotoRepository;
     private final AuthorService authorService;
     private final ShelfService shelfService;
-    private final SummaryService summaryService;
 
     public BookService(BookRepository bookRepository, BookPhotoRepository bookPhotoRepository,
-                       AuthorService authorService, ShelfService shelfService, SummaryService summaryService) {
+                       AuthorService authorService, ShelfService shelfService) {
         this.bookRepository = bookRepository;
         this.bookPhotoRepository = bookPhotoRepository;
         this.authorService = authorService;
         this.shelfService = shelfService;
-        this.summaryService = summaryService;
     }
 
     /**
@@ -73,15 +65,15 @@ public class BookService {
         return bookRepository.findDistinctLanguages();
     }
 
-    public BookDTO create(BookRequest request, LlmConfig llm) {
+    public BookDTO create(BookRequest request) {
         BookEntity book = new BookEntity();
-        apply(book, request, llm);
+        apply(book, request);
         return Mapper.toDto(bookRepository.save(book));
     }
 
-    public BookDTO update(Long id, BookRequest request, LlmConfig llm) {
+    public BookDTO update(Long id, BookRequest request) {
         BookEntity book = getEntity(id);
-        apply(book, request, llm);
+        apply(book, request);
         return Mapper.toDto(book);
     }
 
@@ -130,7 +122,7 @@ public class BookService {
                 .orElseThrow(() -> new NotFoundException("Book " + id + " not found"));
     }
 
-    private void apply(BookEntity book, BookRequest request, LlmConfig llm) {
+    private void apply(BookEntity book, BookRequest request) {
         String isbn = Isbn.requireValidOrNull(request.isbn());
         if (isbn != null) {
             bookRepository.findByIsbn(isbn)
@@ -155,12 +147,7 @@ public class BookService {
         book.setRead(read);
         book.setDateRead(readDate(read, request.dateRead()));
         place(book, request);
-
-        String description = blankToNull(request.description());
-        if (description == null && llm != null && llm.hasApiKey()) {
-            description = tryGenerateSummary(book, llm);
-        }
-        book.setDescription(description);
+        book.setDescription(blankToNull(request.description()));
     }
 
     private void place(BookEntity book, BookRequest request) {
@@ -184,16 +171,6 @@ public class BookService {
         book.setShelf(shelf);
         book.setPositionNumber(request.positionNumber());
         book.setDepthRow(depthRow);
-    }
-
-    private String tryGenerateSummary(BookEntity book, LlmConfig llm) {
-        try {
-            return summaryService.summarize(book.getName(), book.getAuthor().getName(), book.getIsbn(),
-                    book.getLanguage(), llm);
-        } catch (SummaryUnavailableException e) {
-            log.info("Saving \"{}\" without a summary: {}", book.getName(), e.getMessage());
-            return null;
-        }
     }
 
     /** Trims, drops blanks, duplicates (any case) and the main author; keeps the entered order. */

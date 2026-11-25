@@ -1,5 +1,6 @@
 package com.prijilevschi.controller;
 
+import com.prijilevschi.ai.BookSummaries;
 import com.prijilevschi.ai.LlmConfig;
 import com.prijilevschi.dto.BookDTO;
 import com.prijilevschi.dto.BookRequest;
@@ -30,11 +31,14 @@ public class BookController {
     private final BookService bookService;
     private final BookHistoryService historyService;
     private final BookLookupService lookupService;
+    private final BookSummaries summaries;
 
-    public BookController(BookService bookService, BookHistoryService historyService, BookLookupService lookupService) {
+    public BookController(BookService bookService, BookHistoryService historyService, BookLookupService lookupService,
+                          BookSummaries summaries) {
         this.bookService = bookService;
         this.historyService = historyService;
         this.lookupService = lookupService;
+        this.summaries = summaries;
     }
 
     @GetMapping
@@ -64,6 +68,7 @@ public class BookController {
     /**
      * When the description is blank and an LLM API key header is present, a summary is generated.
      * When the link is blank, the book's Goodreads page is looked up by ISBN or by title and author.
+     * Both web calls run before the save, so no database connection is held while they wait.
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -71,7 +76,8 @@ public class BookController {
                           @RequestHeader(value = API_KEY_HEADER, required = false) String apiKey,
                           @RequestHeader(value = BASE_URL_HEADER, required = false) String baseUrl,
                           @RequestHeader(value = MODEL_HEADER, required = false) String model) {
-        return bookService.create(lookupService.withGoodreadsUrl(request), new LlmConfig(apiKey, baseUrl, model));
+        BookRequest enriched = summaries.withSummary(lookupService.withGoodreadsUrl(request), new LlmConfig(apiKey, baseUrl, model));
+        return bookService.create(enriched);
     }
 
     @PutMapping("/{id}")
@@ -80,7 +86,7 @@ public class BookController {
                           @RequestHeader(value = API_KEY_HEADER, required = false) String apiKey,
                           @RequestHeader(value = BASE_URL_HEADER, required = false) String baseUrl,
                           @RequestHeader(value = MODEL_HEADER, required = false) String model) {
-        return bookService.update(id, request, new LlmConfig(apiKey, baseUrl, model));
+        return bookService.update(id, summaries.withSummary(request, new LlmConfig(apiKey, baseUrl, model)));
     }
 
     @DeleteMapping("/{id}")

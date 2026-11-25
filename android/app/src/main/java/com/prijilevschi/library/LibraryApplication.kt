@@ -11,7 +11,7 @@ import com.prijilevschi.library.data.SettingsRepository
 /** Manual dependency container. */
 class AppContainer(application: Application) {
     val settingsRepository = SettingsRepository(application)
-    val libraryRepository = LibraryRepository(settingsRepository, LibraryRepository.defaultHttpClient())
+    val libraryRepository = LibraryRepository(settingsRepository, LibraryRepository.defaultHttpClient(settingsRepository))
 }
 
 class LibraryApplication : Application(), SingletonImageLoader.Factory {

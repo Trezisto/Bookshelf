@@ -7,6 +7,8 @@ services:
     container_name: home-library
     environment:
       - LIBRARY_DB_PATH=/data/library.db
+      # Required: put LIBRARY_API_TOKEN=<random secret> in a .env file next to this one (openssl rand -hex 24)
+      - LIBRARY_API_TOKEN=${LIBRARY_API_TOKEN:?Set LIBRARY_API_TOKEN in .env}
     volumes:
       - library-data:/data
     ports:

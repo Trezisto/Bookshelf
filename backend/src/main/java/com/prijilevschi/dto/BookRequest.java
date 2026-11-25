@@ -27,4 +27,14 @@ public record BookRequest(
         Long shelfId,
         @Min(1) Integer positionNumber,
         @Min(1) Integer depthRow) {
+
+    public BookRequest withDescription(String description) {
+        return new BookRequest(name, authorName, coAuthors, isbn, description, genre, language, publisher, url, rating,
+                publicationDate, pages, read, dateRead, shelfId, positionNumber, depthRow);
+    }
+
+    public BookRequest withUrl(String url) {
+        return new BookRequest(name, authorName, coAuthors, isbn, description, genre, language, publisher, url, rating,
+                publicationDate, pages, read, dateRead, shelfId, positionNumber, depthRow);
+    }
 }

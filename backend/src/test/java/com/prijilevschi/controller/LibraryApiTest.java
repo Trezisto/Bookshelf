@@ -4,6 +4,7 @@ import com.prijilevschi.SqliteTestSupport;
 import com.prijilevschi.ai.LlmConfig;
 import com.prijilevschi.ai.SummaryService;
 import com.prijilevschi.dto.BookLookupDTO;
+import com.prijilevschi.error.LlmEndpointNotAllowedException;
 import com.prijilevschi.error.SummaryUnavailableException;
 import com.prijilevschi.lookup.BookLookupService;
 import org.hamcrest.Matchers;
@@ -18,6 +19,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
 
@@ -27,7 +29,8 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest
+/** API behaviour without the token check; {@link ApiTokenTest} covers authentication. */
+@SpringBootTest(properties = "library.allow-anonymous=true")
 @AutoConfigureMockMvc
 class LibraryApiTest extends SqliteTestSupport {
 
@@ -286,8 +289,10 @@ class LibraryApiTest extends SqliteTestSupport {
 
     @Test
     void generatesSummaryOnlyWhenDescriptionIsBlankAndKeyIsPresent() throws Exception {
+        // the LLM is called before the database transaction starts, so it never holds the single connection
         when(summaryService.summarize(eq("Dracula"), eq("Bram Stoker"), any(), any(), any()))
-                .thenReturn("A vampire travels to England.");
+                .thenAnswer(call -> TransactionSynchronizationManager.isActualTransactionActive()
+                        ? "called inside a transaction" : "A vampire travels to England.");
 
         // no key header: saved without description, LLM never called
         mvc.perform(post("/api/books").contentType(MediaType.APPLICATION_JSON).content("""
@@ -339,6 +344,15 @@ class LibraryApiTest extends SqliteTestSupport {
                         {"title":"Nope"}"""))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.detail").value("no key"));
+
+        when(summaryService.summarize(eq("Elsewhere"), any(), any(), any(), any()))
+                .thenThrow(new LlmEndpointNotAllowedException("not allowed"));
+        mvc.perform(post("/api/ai/summary").contentType(MediaType.APPLICATION_JSON)
+                        .header(LlmConfig.API_KEY_HEADER, "k").header(LlmConfig.BASE_URL_HEADER, "http://169.254.169.254")
+                        .content("""
+                                {"title":"Elsewhere"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("not allowed"));
     }
 
     @Test

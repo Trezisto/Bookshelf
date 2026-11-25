@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.map
 data class AppSettings(
     /** Backend URL; 10.0.2.2 is the host machine as seen from the Android emulator. */
     val serverUrl: String = DEFAULT_SERVER_URL,
+    /** The server's LIBRARY_API_TOKEN, sent as "Authorization: Bearer" with every request to the server. */
+    val serverToken: String = "",
     val llmApiKey: String = "",
     /** Blank = the server's default (Groq). */
     val llmBaseUrl: String = "",
@@ -35,6 +37,7 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
     private val serverUrlKey = stringPreferencesKey("server_url")
+    private val serverTokenKey = stringPreferencesKey("server_token")
     private val apiKeyKey = stringPreferencesKey("llm_api_key")
     private val baseUrlKey = stringPreferencesKey("llm_base_url")
     private val modelKey = stringPreferencesKey("llm_model")
@@ -42,21 +45,29 @@ class SettingsRepository(private val context: Context) {
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         AppSettings(
             serverUrl = prefs[serverUrlKey] ?: AppSettings.DEFAULT_SERVER_URL,
+            serverToken = prefs[serverTokenKey].orEmpty(),
             llmApiKey = prefs[apiKeyKey].orEmpty(),
             llmBaseUrl = prefs[baseUrlKey].orEmpty(),
             llmModel = prefs[modelKey].orEmpty(),
         )
     }
 
-    suspend fun current(): AppSettings = settings.first()
+    /** The last settings read or saved, for code that cannot suspend (the HTTP interceptor). */
+    @Volatile
+    var latest: AppSettings? = null
+        private set
+
+    suspend fun current(): AppSettings = settings.first().also { latest = it }
 
     suspend fun save(settings: AppSettings) {
         context.dataStore.edit { prefs ->
             prefs[serverUrlKey] = normalizeServerUrl(settings.serverUrl)
+            prefs[serverTokenKey] = settings.serverToken.trim()
             prefs[apiKeyKey] = settings.llmApiKey.trim()
             prefs[baseUrlKey] = settings.llmBaseUrl.trim()
             prefs[modelKey] = settings.llmModel.trim()
         }
+        current()
     }
 
     companion object {
